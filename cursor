@@ -1,0 +1,58 @@
+#!/usr/bin/env sh
+
+# Path to the cursor editor appimage
+CURSOR_APPIMAGE="/opt/cursor/cursor.appimage"
+
+# Check if the appimage exists
+if [ ! -f "$CURSOR_APPIMAGE" ]; then
+    echo "Cursor appimage not found at $CURSOR_APPIMAGE" 1>&2
+    exit 1
+fi
+
+# Ensure the appimage is executable
+chmod +x "$CURSOR_APPIMAGE"
+
+# If running in a remote terminal, use the remote CLI (adjust as needed for cursor)
+if [ -n "$VSCODE_IPC_HOOK_CLI" ]; then
+    REMOTE_CLI="$(which -a 'cursor' | grep /remote-cli/)"
+    if [ -n "$REMOTE_CLI" ]; then
+        "$REMOTE_CLI" "$@"
+        exit $?
+    fi
+fi
+
+# Test that cursor wasn't installed inside WSL
+if grep -qi Microsoft /proc/version && [ -z "$DONT_PROMPT_WSL_INSTALL" ]; then
+    echo "To use Cursor with the Windows Subsystem for Linux, please install Cursor in Windows and uninstall the Linux version in WSL. You can then use the \`cursor\` command in a WSL terminal just as you would in a normal command prompt." 1>&2
+    printf "Do you want to continue anyway? [y/N] " 1>&2
+    read -r YN
+    YN=$(printf '%s' "$YN" | tr '[:upper:]' '[:lower:]')
+    case "$YN" in
+        y | yes )
+        ;;
+        * )
+            exit 1
+        ;;
+    esac
+    echo "To no longer see this prompt, start Cursor with the environment variable DONT_PROMPT_WSL_INSTALL defined." 1>&2
+fi
+
+# If root, ensure that --user-data-dir or --file-write is specified
+if [ "$(id -u)" = "0" ]; then
+    for i in "$@"
+    do
+        case "$i" in
+            --user-data-dir | --user-data-dir=* | --file-write | tunnel | serve-web )
+                CAN_LAUNCH_AS_ROOT=1
+            ;;
+        esac
+    done
+    if [ -z $CAN_LAUNCH_AS_ROOT ]; then
+        echo "You are trying to start Cursor as a super user which isn't recommended. If this was intended, please add the argument \`--no-sandbox\` and specify an alternate user data directory using the \`--user-data-dir\` argument." 1>&2
+        exit 1
+    fi
+fi
+
+# Run the cursor appimage
+"$CURSOR_APPIMAGE" "$@"
+exit $?
